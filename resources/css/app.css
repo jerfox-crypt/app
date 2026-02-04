@@ -1,11 +1,43 @@
-@import 'tailwindcss';
+@import "bootstrap/dist/css/bootstrap.min.css";
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-@source '../**/*.blade.php';
-@source '../**/*.js';
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: fixed;
+}
 
-@theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+.carousel-item, .carousel-inner, .carousel {
+    height: 100vh;
+    width: 100vw;
+}
+
+.carousel-img {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    object-fit: cover;
+    object-position: center;
+    /* Hide scrollbars on images */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 10+ */
+}
+
+.carousel-img::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+}
+
+:fullscreen .carousel,
+:fullscreen .carousel-inner,
+:fullscreen .carousel-item {
+    height: 100vh;
+    width: 100vw;
+}
+
+:fullscreen .carousel-img {
+    height: 100vh;
+    width: 100vw;
+    object-fit: cover;
+    object-position: center;
 }
