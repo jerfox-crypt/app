@@ -1,0 +1,29 @@
+/* Carousel Styles */
+.carousel-img {
+    height: 100vh;
+    width: 100%;
+    object-fit: cover;
+}
+
+.carousel-blackout {
+    filter: brightness(0) !important;
+    transition: filter 0.5s ease;
+}
+
+/* Add to your carousel.css file */
+.carousel-fade .carousel-item {
+    opacity: 0;
+    transition-property: opacity;
+    transform: none;
+}
+
+.carousel-fade .carousel-item.active,
+.carousel-fade .carousel-item-next.carousel-item-left,
+.carousel-fade .carousel-item-prev.carousel-item-right {
+    opacity: 1;
+}
+
+/* Optional: Customize fade duration */
+.carousel-fade .carousel-item {
+    transition-duration: 2s; 
+}
