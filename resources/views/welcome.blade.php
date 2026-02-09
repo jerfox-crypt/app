@@ -4,20 +4,19 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
-
+    <title>RFID Scanner System</title>
+    
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Your Custom CSS Files -->
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Only include CSS files that exist -->
     <link href="{{ asset('css/app.css') }}" rel="stylesheet">
     <link href="{{ asset('css/components/carousel.css') }}" rel="stylesheet">
-    <link href="{{ asset('css/components/notifications.css') }}" rel="stylesheet">
-    <link href="{{ asset('css/components/student-display.css') }}" rel="stylesheet">
     <link href="{{ asset('css/components/scanning.css') }}" rel="stylesheet">
-    <link href="{{ asset('css/utilities.css') }}" rel="stylesheet">
 </head>
 
 <body>
@@ -36,8 +35,8 @@
                 </div>
             @endfor
         </div>
-    </div>0004659769
-    
+    </div>
+
 
     <div id="studentInfoContainer" style="display: none;">
         <div id="studentInfoCard" style="
@@ -97,7 +96,7 @@
     <input type="text" id="rfidInput" class="rfid-input-hidden" autofocus data-csrf="{{ csrf_token() }}" />
 
     <!-- Font Awesome for Icons -->
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Bootstrap JS -->
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>

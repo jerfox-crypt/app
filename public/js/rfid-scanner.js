@@ -39,7 +39,6 @@ async function processRFID(rfidCode) {
             },
             body: JSON.stringify({
                 rfid: rfidCode,
-                location: "main_gate",
             }),
         });
 
@@ -48,9 +47,15 @@ async function processRFID(rfidCode) {
         if (data.success) {
             // Success
             displayStudentInfo(data.data);
+
+            // Reset timer for this display (2 seconds)
+            clearTimeout(window.studentInfoTimeout);
+            window.studentInfoTimeout = setTimeout(() => {
+                hideStudentInfo();
+            }, 2000);
         } else {
             // Error
-            console.log('Error:', data.message);
+            console.log("Error:", data.message);
         }
     } catch (error) {
         console.error("Error:", error);
@@ -129,8 +134,8 @@ setInterval(() => {
     }
 }, 30000);
 
-// Display student info in top-right
-function displayStudentInfo(studentData) {
+// Display student info function
+function displayStudentInfo(personData) {
     // Create overlay
     const existingOverlay = document.getElementById("overlay");
     if (!existingOverlay) {
@@ -144,19 +149,23 @@ function displayStudentInfo(studentData) {
     document.getElementById("overlay").style.display = "block";
 
     const carousel = document.getElementById("carouselItem");
-    if (carousel) {
+    if (carousel && typeof bootstrap !== "undefined") {
         const bsCarousel = bootstrap.Carousel.getInstance(carousel);
         if (bsCarousel) {
             bsCarousel.pause();
         }
     }
 
-    // Create initials
+    // Create initials - use personData
     const initials =
-        (studentData.firstname?.charAt(0) || "") +
-        (studentData.lastname?.charAt(0) || "");
+        (personData.firstname?.charAt(0) || "") +
+        (personData.lastname?.charAt(0) || "");
 
-    // Create student info HTML with photo on top-left
+    // Check if it's a teacher
+    const isTeacher =
+        personData.person_type === "teacher" || personData.label === "Teacher";
+
+    // Create info HTML
     const studentInfoHTML = `
         <!-- Photo on top-left -->
         <div style="
@@ -166,8 +175,8 @@ function displayStudentInfo(studentData) {
             z-index: 10001;
         ">
             ${
-                studentData.photo_url
-                    ? `<img src="${studentData.photo_url}" class="img-fluid" alt="Student Photo" style="
+                personData.photo_url
+                    ? `<img src="${personData.photo_url}" class="img-fluid" alt="Photo" style="
         width: 56.25vh;
         height: 90vh;
         object-fit: fill;
@@ -176,9 +185,9 @@ function displayStudentInfo(studentData) {
         top: 50%;
         transform: translateY(-50%);
         z-index: 10001;
+        border-radius: 2%;
     ">`
                     : `<div style="
-                    width: 910px;
                     height: 1365px;
                     border-radius: 20%;
                     background: linear-gradient(135deg, #ffffff, #cccccc);
@@ -194,7 +203,7 @@ function displayStudentInfo(studentData) {
             }
         </div>
         
-        <!-- Student info on top-right -->
+        <!-- Person info on top-right -->
         <div style="
             position: fixed;
             top: 40px;
@@ -204,19 +213,24 @@ function displayStudentInfo(studentData) {
             max-width: 600px;
         ">
             <div style="font-size: 65px; font-weight: 700; color: #ffffff; margin-bottom: 15px; text-shadow: 3px 3px 6px rgba(0,0,0,0.7); line-height: 1.1;">
-                ${studentData.fullname}
+                ${personData.fullname}
             </div>
-            <div style="font-size: 40px; font-weight: 400; color: #ffffff; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
-                ${studentData.lrn}
-            </div>
-            <div style="font-size: 40px; font-weight: 400; color: #ffffff; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
-                ${studentData.level_section}
-            </div>
+            ${
+                isTeacher
+                    ? `<div style="font-size: 40px; font-weight: 400; color: #ffffff; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
+                    Teacher
+                </div>`
+                    : `<div style="font-size: 40px; font-weight: 400; color: #ffffff; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
+                    ${personData.lrn || ""}
+                </div>
+                <div style="font-size: 40px; font-weight: 400; color: #ffffff; text-shadow: 2px 2px 4px rgba(0,0,0,0.7);">
+                    ${personData.level_section || ""}
+                </div>`
+            }
         </div>
     `;
 
-    // Get or create container0004659769
-
+    // Get or create container
     let container = document.getElementById("studentInfoContainer");
     if (!container) {
         container = document.createElement("div");
@@ -229,7 +243,7 @@ function displayStudentInfo(studentData) {
     container.style.display = "block";
     document.getElementById("studentInfoCard").innerHTML = studentInfoHTML;
 
-    // Auto-hide after 10 seconds
+    // Auto-hide after 2 seconds
     clearTimeout(window.studentInfoTimeout);
     window.studentInfoTimeout = setTimeout(() => {
         hideStudentInfo();
@@ -246,7 +260,7 @@ function hideStudentInfo() {
 
     // Resume carousel
     const carousel = document.getElementById("carouselItem");
-    if (carousel) {
+    if (carousel && typeof bootstrap !== "undefined") {
         const bsCarousel = bootstrap.Carousel.getInstance(carousel);
         if (bsCarousel) {
             bsCarousel.cycle();
@@ -266,18 +280,6 @@ document.addEventListener("click", function () {
         }, 2000);
     }
 });
-
-// Also reset timer on RFID scan - update the processRFID function:
-// In processRFID function, after displaying student info, add this:
-if (data.success) {
-    displayStudentInfo(data.data);
-
-    // Reset timer for this display
-    clearTimeout(window.studentInfoTimeout);
-    window.studentInfoTimeout = setTimeout(() => {
-        hideStudentInfo();
-    }, 2000);
-}
 
 // Digital Clock Function
 function updateClock() {

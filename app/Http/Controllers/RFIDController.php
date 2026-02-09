@@ -14,15 +14,12 @@ class RFIDController extends Controller
         // Validate the request
         $validated = $request->validate([
             'rfid' => 'required|string|max:50',
-            'location' => 'nullable|string|max:100'
         ]);
 
         $rfid = trim($validated['rfid']);
-        $location = $validated['location'] ?? 'default';
 
         Log::info('RFID Scan Attempt', [
             'rfid' => $rfid,
-            'location' => $location,
             'ip' => $request->ip()
         ]);
 
@@ -35,12 +32,15 @@ class RFIDController extends Controller
             ], 429);
         }
 
-        // Check if RFID exists in studinfo
+        // Check if RFID exists in studinfo (students)
         $student = DB::table('studinfo')->where('rfid', $rfid)->first();
 
-        if (!$student) {
-            // Log failed scan
-            $this->logScan($rfid, null, 'not_found', 'RFID not found in database', $location);
+        // Check if RFID exists in teacher table
+        $teacher = DB::table('teacher')->where('rfid', $rfid)->first();
+
+        if (!$student && !$teacher) {
+            // ADD THIS LINE: Log failed scan
+            $this->logScan($rfid, null, 'not_found', 'RFID not found in database');
 
             return response()->json([
                 'success' => false,
@@ -49,19 +49,57 @@ class RFIDController extends Controller
             ], 404);
         }
 
-        // Format student data for response
-        $studentData = $this->formatStudentData($student);
+        // Determine if it's a student or teacher
+        if ($student) {
+            // Format student data for response
+            $personData = $this->formatStudentData($student);
+            $personType = 'student';
+            $personId = $student->id;
+        } else {
+            // Format teacher data for response
+            $personData = $this->formatTeacherData($teacher);
+            $personType = 'teacher';
+            $personId = $teacher->id;
+        }
 
-        // Log successful scan
-        $this->logScan($rfid, $student->id, 'success', 'Scan successful', $location, $studentData);
+        // ADD THIS LINE: Log successful scan
+        $this->logScan($rfid, $personId, 'success', 'Scan successful', $personData);
 
         // Return success response
         return response()->json([
             'success' => true,
-            'message' => $this->getWelcomeMessage($student),
-            'data' => $studentData,
+            'data' => $personData,
+            'person_type' => $personType,
             'scan_time' => now()->format('Y-m-d H:i:s')
         ]);
+    }
+
+    private function formatTeacherData($teacher)
+    {
+        // Build full name
+        $fullName = $teacher->firstname . ' ' . $teacher->middlename . ' ' . $teacher->lastname;
+        $fullName = trim($fullName);
+
+        // Fix photo URL - always use .png extension
+        $photoUrl = null;
+        if ($teacher->picurl) {
+            // Get filename without extension
+            $filename = pathinfo($teacher->picurl, PATHINFO_FILENAME);
+
+            // Always use .png extension
+            $photoUrl = asset('storage/employeeprofile/2020-2021/' . $filename . '.png');
+        }
+
+        return [
+            'id' => $teacher->id,
+            'fullname' => $fullName,
+            'lastname' => $teacher->lastname,
+            'firstname' => $teacher->firstname,
+            'middlename' => $teacher->middlename,
+            'photo_url' => $photoUrl,
+            'person_type' => 'teacher',
+            'label' => 'Teacher'
+        ];
     }
 
     private function formatStudentData($student)
@@ -109,35 +147,12 @@ class RFIDController extends Controller
         ];
     }
 
-    private function getWelcomeMessage($student)
+    private function isDuplicateScan($studentId, )
     {
-        $greeting = 'Good ' . $this->getTimeOfDayGreeting();
-        $name = $student->firstname;
-
-        return "{$greeting}, {$name}! Welcome to " . config('app.name', 'the school');
-    }
-
-    private function getTimeOfDayGreeting()
-    {
-        $hour = now()->hour;
-
-        if ($hour < 12) {
-            return 'morning';
-        } elseif ($hour < 18) {
-            return 'afternoon';
-        } else {
-            return 'evening';
-        }
-    }
-
-    private function isDuplicateScan($studentId, $location)
-    {
-        // Check if same student scanned at same location within last 5 minutes
         $fiveMinutesAgo = Carbon::now()->subMinutes(5);
 
         return DB::table('scan_logs')
             ->where('student_id', $studentId)
-            ->where('location', $location)
             ->where('status', 'success')
             ->where('scan_time', '>', $fiveMinutesAgo)
             ->exists();
@@ -156,7 +171,7 @@ class RFIDController extends Controller
         return $scanCount >= 10;
     }
 
-    private function logScan($rfid, $studentId, $status, $message, $location, $metadata = null)
+    private function logScan($rfid, $studentId, $status, $message, $metadata = null)
     {
         // Handle error status - always log errors
         if ($status === 'failed' || $status === 'error' || $status === 'not_found') {
