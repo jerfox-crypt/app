@@ -9,11 +9,13 @@ Route::get('/', function () {
 Auth::routes();
 
 Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name('home');
-    
+
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use App\Http\Controllers\RFIDController;
 
 
 // In routes/web.php or routes/api.php
-Route::match(['get', 'post'], '/api/scan-rfid', [RFIDController::class, 'handleScan']);
+Route::post('/api/scan-rfid', [RFIDController::class, 'handleScanPost']);
+Route::get('/api/scan-rfid', [RFIDController::class, 'handleScanGet']);
+Route::get('/api/transaction-logs', [RFIDController::class, 'getTransactionLogs']);

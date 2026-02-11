@@ -3,49 +3,75 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
+use App\Models\Teacher;
+use App\Models\Student;
+use App\Models\TapHistory;
+use App\Models\TapBunker;
+use App\Models\TransactionLog;
+use App\Models\Setup;
 
 class RFIDController extends Controller
 {
-    public function handleScan(Request $request)
+    /**
+     * Handle POST request for RFID scanning
+     */
+    public function handleScanPost(Request $request)
     {
-        // Handle both GET and POST requests
-        if ($request->isMethod('get')) {
-            // GET request: get rfid from query parameter
-            $rfid = trim($request->query('rfid', ''));
+        $validated = $request->validate([
+            'rfid' => 'required|string|max:50',
+        ]);
+        $rfid = trim($validated['rfid']);
 
-            if (empty($rfid)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'RFID_REQUIRED',
-                    'message' => 'RFID parameter is required'
-                ], 400);
-            }
-        } else {
-            // POST request: validate the request
-            $validated = $request->validate([
-                'rfid' => 'required|string|max:50',
-            ]);
-            $rfid = trim($validated['rfid']);
-        }
+        return $this->processRFID($rfid, $request);
+    }
 
-        Log::info('RFID Scan Attempt', [
+    /**
+     * Handle GET request for RFID scanning
+     */
+    public function handleScanGet(Request $request)
+    {
+        $validated = $request->validate([
+            'rfid' => 'required|string|max:50',
+        ]);
+        $rfid = trim($validated['rfid']);
+
+        return $this->processRFID($rfid, $request);
+    }
+
+    /**
+     * Common RFID processing logic
+     */
+    private function processRFID($rfid, $request)
+    {
+        // Use Model instead of DB::table
+        TransactionLog::create([
             'rfid' => $rfid,
-            'ip' => $request->ip(),
-            'method' => $request->method()
+            'person_id' => null,
+            'person_type' => null,
+            'status' => 'attempt',
+            'message' => 'RFID scan attempt',
+            'metadata' => [
+                'ip' => $request->ip(),
+                'method' => $request->method(),
+                'user_agent' => $request->userAgent()
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'method' => $request->method(),
+            'endpoint' => $request->path(),
         ]);
 
-        $teacher = DB::table('teacher')->where('rfid', $rfid)->first();
+        // Use Eloquent models instead of DB::table
+        $teacher = Teacher::where('rfid', $rfid)->first();
 
         if ($teacher) {
-            // It's a teacher
             $personData = $this->formatTeacherData($teacher);
             $personType = 'teacher';
             $personId = $teacher->id;
         } else {
-            $student = DB::table('studinfo')->where('rfid', $rfid)->first();
+            $student = Student::where('rfid', $rfid)->first();
 
             if ($student) {
                 $personData = $this->formatStudentData($student);
@@ -67,7 +93,6 @@ class RFIDController extends Controller
             'data' => $personData
         ]);
 
-        // Return success response
         return response()->json([
             'success' => true,
             'data' => $personData,
@@ -101,23 +126,12 @@ class RFIDController extends Controller
 
     private function formatStudentData($student)
     {
-        // Build full name
         $fullName = $student->lastname . ', ' . $student->firstname;
         if ($student->middlename) {
             $fullName .= ' ' . substr($student->middlename, 0, 1) . '.';
         }
         if ($student->suffix) {
             $fullName .= ' ' . $student->suffix;
-        }
-
-        // Determine primary contact
-        $primaryContact = null;
-        if (!empty($student->mcontactno)) {
-            $primaryContact = $student->mcontactno;
-        } elseif (!empty($student->fcontactno)) {
-            $primaryContact = $student->fcontactno;
-        } elseif (!empty($student->gcontactno)) {
-            $primaryContact = $student->gcontactno;
         }
 
         return [
@@ -136,33 +150,23 @@ class RFIDController extends Controller
         ];
     }
 
-    private function isDuplicateScan($studentId)
-    {
-        $fiveMinutesAgo = Carbon::now()->subMinutes(5);
-
-        return DB::table('taphistory')
-            ->where('studid', $studentId)
-            ->where('tapstatus', 1)
-            ->where('createddatetime', '>', $fiveMinutesAgo)
-            ->exists();
-    }
-
-    private function isRateLimited($rfid)
-    {
-        // Allow max 10 scans per minute per RFID
-        $oneMinuteAgo = Carbon::now()->subMinute();
-
-        $scanCount = DB::table('taphistory')
-            ->where('rfid', $rfid)
-            ->where('createddatetime', '>', $oneMinuteAgo)
-            ->count();
-
-        return $scanCount >= 10;
-    }
-
     private function logScan($rfid, $personId, $status, $message, $metadata = null)
     {
-        \Log::info('logScan START', [
+        // Use Model
+        TransactionLog::create([
+            'rfid' => $rfid,
+            'person_id' => $personId,
+            'person_type' => $metadata['person_type'] ?? null,
+            'status' => $status,
+            'message' => $message,
+            'metadata' => $metadata,
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'method' => request()->method(),
+            'endpoint' => request()->path(),
+        ]);
+
+        Log::info('logScan START', [
             'rfid' => $rfid,
             'personId' => $personId,
             'status' => $status,
@@ -170,16 +174,9 @@ class RFIDController extends Controller
             'metadata' => $metadata
         ]);
 
-        // Handle error status - always log errors
         if ($status === 'failed' || $status === 'error' || $status === 'not_found') {
-            \Log::info('Inserting error record to taphistory', [
-                'rfid' => $rfid,
-                'personId' => $personId,
-                'status' => $status
-            ]);
-
-            // Insert error record to taphistory
-            DB::table('taphistory')->insert([
+            // Use Model
+            TapHistory::create([
                 'tdate' => now()->format('Y-m-d'),
                 'ttime' => now()->format('H:i'),
                 'tapstate' => 'ERROR',
@@ -191,81 +188,34 @@ class RFIDController extends Controller
                 'utype' => 1
             ]);
 
-            \Log::info('Error record inserted to taphistory');
+            Log::info('Error record inserted to taphistory');
             return;
         }
 
-        // For successful scans, check if we should log
         if ($personId) {
-            \Log::info('Processing successful scan', [
-                'personId' => $personId,
-                'person_type' => $metadata['person_type'] ?? null
-            ]);
-
-            // Tap State Logic
-            $lastTap = DB::table('tapbunker')
-                ->where('rfid', $rfid)
+            // Use Model for successful scans
+            $lastTap = TapBunker::where('rfid', $rfid)
                 ->orderBy('createddatetime', 'desc')
                 ->first();
-
-            \Log::info('Last tap query result', [
-                'rfid' => $rfid,
-                'lastTap' => $lastTap ? [
-                    'tapstate' => $lastTap->tapstate,
-                    'createddatetime' => $lastTap->createddatetime,
-                    'rfid' => $lastTap->rfid
-                ] : null,
-                'hasLastTap' => !is_null($lastTap)
-            ]);
 
             $tapstate = 'IN';
 
             if ($lastTap) {
-                // 2. Calculate time difference in minutes (use absolute value)
                 $lastTapTime = Carbon::parse($lastTap->createddatetime);
                 $timeDifferenceMinutes = abs(now()->diffInMinutes($lastTapTime));
 
-                \Log::info('Time difference calculation', [
-                    'lastTapTime' => $lastTapTime,
-                    'currentTime' => now(),
-                    'timeDifferenceMinutes' => $timeDifferenceMinutes
-                ]);
-
-                // 3. If > 1 minute → toggle IN/OUT If ≤ 1 minute → keep same state
                 if ($timeDifferenceMinutes > 1) {
                     $tapstate = ($lastTap->tapstate === 'IN') ? 'OUT' : 'IN';
-                    \Log::info('Time > 1 minute, toggling state', [
-                        'oldState' => $lastTap->tapstate,
-                        'newState' => $tapstate
-                    ]);
                 } else {
                     $tapstate = $lastTap->tapstate;
-                    \Log::info('Time ≤ 1 minute, keeping same state', [
-                        'state' => $tapstate,
-                        'timeDifference' => $timeDifferenceMinutes
-                    ]);
                     return;
                 }
             }
 
-            // Determine utype based on person_type
-            $utype = 1;
-            if (isset($metadata['person_type'])) {
-                $utype = $metadata['person_type'] === 'teacher' ? 7 : 1;
-                \Log::info('Setting utype', [
-                    'person_type' => $metadata['person_type'],
-                    'utype' => $utype
-                ]);
-            }
+            $utype = isset($metadata['person_type']) && $metadata['person_type'] === 'teacher' ? 7 : 1;
 
-            \Log::info('Inserting into taphistory', [
-                'tapstate' => $tapstate,
-                'studid' => $personId,
-                'utype' => $utype
-            ]);
-
-            // Insert into taphistory
-            DB::table('taphistory')->insert([
+            // Use Model
+            TapHistory::create([
                 'tdate' => now()->format('Y-m-d'),
                 'ttime' => now()->format('H:i'),
                 'tapstate' => $tapstate,
@@ -274,57 +224,46 @@ class RFIDController extends Controller
                 'createdby' => auth()->id() ?? null,
                 'tapstatus' => 1,
                 'deleted' => 0,
-                'utype' => $utype // 1 for student, 7 for teacher
+                'utype' => $utype
             ]);
 
-            \Log::info('taphistory record inserted');
-
-            // Log to tapbunker for both students AND teachers
             if (isset($metadata['person_type'])) {
-                \Log::info('Calling logToTapbunker', [
-                    'personId' => $personId,
-                    'tapstate' => $tapstate,
-                    'person_type' => $metadata['person_type']
-                ]);
                 $this->logToTapbunker($rfid, $personId, $tapstate, $metadata);
             }
         } else {
-            \Log::warning('No personId provided, skipping scan logging');
+            Log::warning('No personId provided, skipping scan logging');
         }
 
-        \Log::info('logScan END');
+        Log::info('logScan END');
     }
 
     private function logToTapbunker($rfid, $personId, $tapstate, $metadata = null)
     {
-        \Log::info('logToTapbunker START', [
+        Log::info('logToTapbunker START', [
             'rfid' => $rfid,
             'personId' => $personId,
             'tapstate' => $tapstate,
             'person_type' => $metadata['person_type'] ?? 'unknown'
         ]);
 
-        $setup = DB::table('setup')->first();
+        $setup = Setup::first();
         $school = $setup->school ?? 'MAC';
 
         $person = null;
         $isTeacher = false;
 
-        // Check if it's a teacher or student
         if (isset($metadata['person_type']) && $metadata['person_type'] === 'teacher') {
-            $person = DB::table('teacher')->where('id', $personId)->first();
+            $person = Teacher::find($personId);
             $isTeacher = true;
         } else {
-            $person = DB::table('studinfo')->where('id', $personId)->first();
+            $person = Student::find($personId);
         }
 
-        if (!$person)
-            return;
+        if (!$person) return;
 
         $time = now()->format('h:i A');
         $message = '';
 
-        // E. Build SMS Message Student & Teacher
         if ($isTeacher) {
             $message = "{$school}: Teacher {$person->firstname} tapped {$tapstate} at {$time}";
         } else {
@@ -332,28 +271,16 @@ class RFIDController extends Controller
             $message = "{$school}: Your student {$person->firstname} is already {$location} the school campus at {$time}";
         }
 
-        // Determine receiver and format to +63 (only for students)
         $receiver = null;
-        $rawNumber = null;
-
         if (!$isTeacher) {
-            // Get raw number based on priority (students only)
-            if (!empty($person->mcontactno)) {
-                $rawNumber = $person->mcontactno;
-            } elseif (!empty($person->fcontactno)) {
-                $rawNumber = $person->fcontactno;
-            } elseif (!empty($person->gcontactno)) {
-                $rawNumber = $person->gcontactno;
-            }
-
-            // Format to +63 format
+            $rawNumber = $person->mcontactno ?? $person->fcontactno ?? $person->gcontactno ?? null;
             if ($rawNumber) {
                 $receiver = $this->formatTo63($rawNumber);
             }
         }
 
-        // Insert into tapbunker
-        DB::table('tapbunker')->insert([
+        // Use Model
+        TapBunker::create([
             'message' => $message,
             'receiver' => $receiver,
             'smsstatus' => 0,
@@ -363,21 +290,20 @@ class RFIDController extends Controller
             'xml' => $school
         ]);
 
-        \Log::info('tapbunker record inserted', [
+        Log::info('tapbunker record inserted', [
             'message' => $message,
             'receiver' => $receiver,
             'tapstate' => $tapstate,
             'person_type' => $isTeacher ? 'teacher' : 'student'
         ]);
 
-        \Log::info('logToTapbunker END');
+        Log::info('logToTapbunker END');
     }
 
     private function formatTo63($phoneNumber)
     {
         $clean = preg_replace('/[^0-9]/', '', $phoneNumber);
-        if (empty($clean))
-            return null;
+        if (empty($clean)) return null;
 
         $clean = ltrim($clean, '0');
         $clean = (substr($clean, 0, 2) === '63') ? $clean : '63' . $clean;
@@ -385,11 +311,9 @@ class RFIDController extends Controller
         return '+' . $clean;
     }
 
-    // Optional: Get recent scans for dashboard
     public function getRecentScans()
     {
-        $scans = DB::table('taphistory')
-            ->where('tapstatus', 1)
+        $scans = TapHistory::where('tapstatus', 1)
             ->orderBy('createddatetime', 'desc')
             ->limit(20)
             ->get();
@@ -397,6 +321,17 @@ class RFIDController extends Controller
         return response()->json([
             'success' => true,
             'data' => $scans
+        ]);
+    }
+
+    public function getTransactionLogs(Request $request)
+    {
+        $logs = TransactionLog::orderBy('created_at', 'desc')
+            ->paginate(50);
+
+        return response()->json([
+            'success' => true,
+            'data' => $logs
         ]);
     }
 }
