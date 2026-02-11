@@ -15,4 +15,5 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\RFIDController;
 
 
-Route::post('/api/scan-rfid', [RFIDController::class, 'handleScan']);
+// In routes/web.php or routes/api.php
+Route::match(['get', 'post'], '/api/scan-rfid', [RFIDController::class, 'handleScan']);
